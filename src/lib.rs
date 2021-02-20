@@ -1,3 +1,5 @@
+use iso_surface::surface::Surface;
+use iso_surface::Scene;
 use std::{cell::RefCell, f64, rc::Rc};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::{prelude::*, Clamped};
@@ -51,13 +53,10 @@ pub fn run() -> Result<(), JsValue> {
     #[cfg(debug_assertions)]
     console_error_panic_hook::set_once();
 
-    let mut scene = iso_surface::Scene::new();
-    scene.add_blob(40, 80, 10, 10, 10);
-    scene.add_blob(147, 150, 25, 4, 4);
-    scene.add_blob(500, 450, 50, -2, 2);
-    scene.add_blob(300.0, 20.0, 60.0, -0.7, -0.7);
-    scene.add_blob(1000, 666, 10, -10, 10);
-    let surface = iso_surface::Surface::new(1024, 768);
+    let mut scene = Scene::new();
+    scene.add_drifter(40, 80, 10, 10, 10);
+    scene.add_bouncer(147, 150, 25, 4, 4);
+    let surface = Surface::new(1024, 768);
 
     let document = web_sys::window().unwrap().document().unwrap();
     let canvas = document.get_element_by_id("canvas").unwrap();
@@ -84,10 +83,10 @@ pub fn run() -> Result<(), JsValue> {
 
     let mut i = 0;
     let mut data_index = 0;
-    *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+    let klosura = move || {
         for y in 0..768 {
             for x in 0..1024 {
-                let color = iso_surface::Surface::pixel_color(&scene, x, y);
+                let color = Surface::pixel_color(&scene, x, y);
                 data_vec[data_index] = color.0;
                 data_index += 1;
                 data_vec[data_index] = color.1;
@@ -130,14 +129,16 @@ pub fn run() -> Result<(), JsValue> {
         // Set the body's text content to how many times this
         // requestAnimationFrame callback has fired.
         i += 1;
-//        console_log!("Frame: {}", i);
+        //        console_log!("Frame: {}", i);
         //let text = format!("requestAnimationFrame has been called {} times.", i);
         //      body().set_text_content(Some(&text));
 
         // Schedule ourself for another requestAnimationFrame callback.
         scene.tick();
         request_animation_frame(f.borrow().as_ref().unwrap());
-    }) as Box<dyn FnMut()>));
+    };
+
+    *g.borrow_mut() = Some(Closure::wrap(Box::new(klosura) as Box<dyn FnMut()>));
 
     request_animation_frame(g.borrow().as_ref().unwrap());
     Ok(())
