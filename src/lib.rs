@@ -1,5 +1,4 @@
-use iso_surface::surface::Surface;
-use iso_surface::Scene;
+use iso_surface::{scene::Scene, surface::Surface};
 use std::{cell::RefCell, f64, rc::Rc};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::{prelude::*, Clamped};
@@ -53,10 +52,10 @@ pub fn run() -> Result<(), JsValue> {
     #[cfg(debug_assertions)]
     console_error_panic_hook::set_once();
 
-    let mut scene = Scene::new();
+    let surface = Surface::new(1024, 768);
+    let mut scene = Scene::new(&surface);
     scene.add_drifter(40, 80, 10, 10, 10);
     scene.add_bouncer(147, 150, 25, 4, 4);
-    let surface = Surface::new(1024, 768);
 
     let document = web_sys::window().unwrap().document().unwrap();
     let canvas = document.get_element_by_id("canvas").unwrap();
