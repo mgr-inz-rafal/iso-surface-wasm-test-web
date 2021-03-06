@@ -1,4 +1,4 @@
-use iso_surface::{scene::Scene, surface::Surface, Physics, Ticker};
+use iso_surface::{scene::Scene, surface::Surface, Contextable, Physics, Ticker};
 use std::{cell::RefCell, f64, rc::Rc};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::{prelude::*, Clamped};
@@ -23,33 +23,44 @@ pub fn run() -> Result<(), JsValue> {
     const WIDTH: u32 = 80;
     const HEIGHT: u32 = 192;
 
-    struct CustomBlob {};
-    impl CustomBlob {
-        const BOUNCE_THRUST: f64 = -20.0;
-        const GRAVITY_DRAG: f64 = 0.27;
-    }
-    impl Ticker for CustomBlob {
-        fn tick(&self, input: Physics, dimension: &(u32, u32)) -> Physics {
-            let y = input.y + input.vy;
-            let vy = if y > dimension.1 as f64 {
-                Self::BOUNCE_THRUST
-            } else {
-                input.vy + Self::GRAVITY_DRAG
-            };
+    // struct CustomBlob {};
+    // impl CustomBlob {
+    //     const BOUNCE_THRUST: f64 = -20.0;
+    //     const GRAVITY_DRAG: f64 = 0.27;
+    // }
+    // impl Ticker for CustomBlob {
+    //     fn tick(&self, input: Physics, dimension: &(u32, u32)) -> Physics {
+    //         let y = input.y + input.vy;
+    //         let vy = if y > dimension.1 as f64 {
+    //             Self::BOUNCE_THRUST
+    //         } else {
+    //             input.vy + Self::GRAVITY_DRAG
+    //         };
 
-            Physics::new(input.x, y, input.r, input.vx, vy, 0)
+    //         Physics::new(input.x, y, input.r, input.vx, vy, 0)
+    //     }
+    // }
+    // let custom_bouncy_blob = CustomBlob {};
+
+    // struct CustomSunBlob {}
+    // impl Ticker for CustomSunBlob {
+    //     fn tick(&self, input: Physics, _: &(u32, u32)) -> Physics {
+    //         Physics::new(input.x, input.y, input.r, input.vx, input.vy, 0)
+    //     }
+    // }
+    // let custom_sun_blob = CustomSunBlob {};
+
+    struct CustomFlickerBlobContext {
+        frame: usize,
+    };
+    impl Contextable for CustomFlickerBlobContext {
+        fn frame(&self) -> usize {
+            self.frame
+        }
+        fn set_frame(&mut self, frame: usize) {
+            self.frame = frame;
         }
     }
-    let custom_bouncy_blob = CustomBlob {};
-
-    struct CustomSunBlob {}
-    impl Ticker for CustomSunBlob {
-        fn tick(&self, input: Physics, _: &(u32, u32)) -> Physics {
-            Physics::new(input.x, input.y, input.r, input.vx, input.vy, 0)
-        }
-    }
-    let custom_sun_blob = CustomSunBlob {};
-
     struct CustomFlickerBlob {
         position_table: Vec<(f64, f64)>,
     }
@@ -60,14 +71,20 @@ pub fn run() -> Result<(), JsValue> {
                 .expect("No position defined?")
         }
     }
-    impl Ticker for CustomFlickerBlob {
-        fn tick(&self, input: Physics, _: &(u32, u32)) -> Physics {
-            let pos = self.get_pos(input.context);
-            let mut frame = input.context + 1;
-            if frame == self.position_table.len() {
-                frame = 0;
+    impl<C: Contextable> Ticker<C> for CustomFlickerBlob {
+        fn tick(&self, input: Physics<C>, _: &(u32, u32)) -> Physics<C> {
+            if let Some(mut context) = input.context {
+                let mut frame = context.frame();
+                let pos = self.get_pos(frame);
+                frame = frame + 1;
+                if frame == self.position_table.len() {
+                    frame = 0;
+                }
+                context.set_frame(frame);
+                Physics::with_context(pos.0 / 2.0, pos.1, input.r, input.vx, input.vy, context)
+            } else {
+                panic!("No context!");
             }
-            Physics::new(pos.0 / 2.0, pos.1, input.r, input.vx, input.vy, frame)
         }
     }
     let custom_flicker_blob = CustomFlickerBlob {
@@ -127,6 +144,18 @@ pub fn run() -> Result<(), JsValue> {
         ],
     };
 
+    struct CustomFlickerBlobContextRight {
+        frame: usize,
+    };
+    impl Contextable for CustomFlickerBlobContextRight {
+        fn frame(&self) -> usize {
+            self.frame
+        }
+        fn set_frame(&mut self, frame: usize) {
+            self.frame = frame;
+        }
+    }
+
     struct CustomFlickerBlobRight {
         position_table: Vec<(f64, f64)>,
     }
@@ -137,21 +166,27 @@ pub fn run() -> Result<(), JsValue> {
                 .expect("No position defined?")
         }
     }
-    impl Ticker for CustomFlickerBlobRight {
-        fn tick(&self, input: Physics, _: &(u32, u32)) -> Physics {
-            let pos = self.get_pos(input.context);
-            Physics::new(
-                (pos.0 / 2.0) + (90.0 / 2.0),
-                pos.1,
-                input.r,
-                input.vx,
-                input.vy,
-                if input.context == 0 {
-                    self.position_table.len() - 1
+    impl<C: Contextable> Ticker<C> for CustomFlickerBlobRight {
+        fn tick(&self, input: Physics<C>, _: &(u32, u32)) -> Physics<C> {
+            if let Some(mut context) = input.context {
+                let frame = context.frame();
+                let pos = self.get_pos(frame);
+                if frame == 0 {
+                    context.set_frame(self.position_table.len() - 1)
                 } else {
-                    input.context - 1
-                },
-            )
+                    context.set_frame(frame - 1)
+                }
+                Physics::with_context(
+                    (pos.0 / 2.0) + (90.0 / 2.0),
+                    pos.1,
+                    input.r,
+                    input.vx,
+                    input.vy,
+                    context,
+                )
+            } else {
+                panic!("No context!");
+            }
         }
     }
     let custom_flicker_blob_right = CustomFlickerBlobRight {
@@ -215,9 +250,25 @@ pub fn run() -> Result<(), JsValue> {
     let mut scene = Scene::new(&surface);
     //scene.add_bouncer(10, 10, 10, 10, 10);
 
-    scene.add_custom(0, 0, 3, 0, 0, 0, Box::new(custom_flicker_blob));
-    scene.add_custom(0, 0, 3, 0, 0, 0, Box::new(custom_flicker_blob_right));
-    scene.add_custom(0, 0, 10, 0, 0, 0, Box::new(custom_sun_blob));
+    scene.add_custom(
+        0,
+        0,
+        3,
+        0,
+        0,
+        CustomFlickerBlobContext { frame: 0 },
+        Box::new(custom_flicker_blob),
+    );
+    scene.add_custom(
+        0,
+        0,
+        3,
+        0,
+        0,
+        CustomFlickerBlobContext { frame: 0 },
+        Box::new(custom_flicker_blob_right),
+    );
+    //    scene.add_custom(0, 0, 10, 0, 0, 0, Box::new(custom_sun_blob));
 
     let document = web_sys::window().unwrap().document().unwrap();
     let canvas = document.get_element_by_id("canvas").unwrap();
