@@ -52,13 +52,37 @@ pub fn run() -> Result<(), JsValue> {
 
     struct CustomFlickerBlobContext {
         frame: usize,
+        frameskip: usize,
+    }
+
+    impl CustomFlickerBlobContext {
+        const FRAME_SKIP: usize = 3;
+
+        fn new(initial_frame: usize) -> Self {
+            Self {
+                frame: initial_frame,
+                frameskip: Self::FRAME_SKIP,
+            }
+        }
     };
+
     impl Contextable for CustomFlickerBlobContext {
         fn frame(&self) -> usize {
             self.frame
         }
+
         fn set_frame(&mut self, frame: usize) {
             self.frame = frame;
+        }
+
+        fn should_advance(&mut self) -> bool {
+            if self.frameskip == 0 {
+                self.frameskip = Self::FRAME_SKIP;
+                true
+            } else {
+                self.frameskip -= 1;
+                false
+            }
         }
     }
     struct CustomFlickerBlob {
@@ -74,14 +98,18 @@ pub fn run() -> Result<(), JsValue> {
     impl<C: Contextable> Ticker<C> for CustomFlickerBlob {
         fn tick(&self, input: Physics<C>, _: &(u32, u32)) -> Physics<C> {
             if let Some(mut context) = input.context {
-                let mut frame = context.frame();
-                let pos = self.get_pos(frame);
-                frame = frame + 1;
-                if frame == self.position_table.len() {
-                    frame = 0;
+                if context.should_advance() {
+                    let mut frame = context.frame();
+                    let pos = self.get_pos(frame);
+                    frame = frame + 1;
+                    if frame == self.position_table.len() {
+                        frame = 0;
+                    }
+                    context.set_frame(frame);
+                    Physics::with_context(pos.0 / 2.0, pos.1, input.r, input.vx, input.vy, context)
+                } else {
+                    Physics::with_context(input.x, input.y, input.r, input.vx, input.vy, context)
                 }
-                context.set_frame(frame);
-                Physics::with_context(pos.0 / 2.0, pos.1, input.r, input.vx, input.vy, context)
             } else {
                 panic!("No context!");
             }
@@ -144,18 +172,6 @@ pub fn run() -> Result<(), JsValue> {
         ],
     };
 
-    struct CustomFlickerBlobContextRight {
-        frame: usize,
-    };
-    impl Contextable for CustomFlickerBlobContextRight {
-        fn frame(&self) -> usize {
-            self.frame
-        }
-        fn set_frame(&mut self, frame: usize) {
-            self.frame = frame;
-        }
-    }
-
     struct CustomFlickerBlobRight {
         position_table: Vec<(f64, f64)>,
     }
@@ -169,21 +185,25 @@ pub fn run() -> Result<(), JsValue> {
     impl<C: Contextable> Ticker<C> for CustomFlickerBlobRight {
         fn tick(&self, input: Physics<C>, _: &(u32, u32)) -> Physics<C> {
             if let Some(mut context) = input.context {
-                let frame = context.frame();
-                let pos = self.get_pos(frame);
-                if frame == 0 {
-                    context.set_frame(self.position_table.len() - 1)
+                if context.should_advance() {
+                    let frame = context.frame();
+                    let pos = self.get_pos(frame);
+                    if frame == 0 {
+                        context.set_frame(self.position_table.len() - 1)
+                    } else {
+                        context.set_frame(frame - 1)
+                    }
+                    Physics::with_context(
+                        (pos.0 / 2.0) + (90.0 / 2.0),
+                        pos.1,
+                        input.r,
+                        input.vx,
+                        input.vy,
+                        context,
+                    )
                 } else {
-                    context.set_frame(frame - 1)
+                    Physics::with_context(input.x, input.y, input.r, input.vx, input.vy, context)
                 }
-                Physics::with_context(
-                    (pos.0 / 2.0) + (90.0 / 2.0),
-                    pos.1,
-                    input.r,
-                    input.vx,
-                    input.vy,
-                    context,
-                )
             } else {
                 panic!("No context!");
             }
@@ -256,7 +276,7 @@ pub fn run() -> Result<(), JsValue> {
         3,
         0,
         0,
-        CustomFlickerBlobContext { frame: 0 },
+        CustomFlickerBlobContext::new(0),
         Box::new(custom_flicker_blob),
     );
     scene.add_custom(
@@ -265,7 +285,7 @@ pub fn run() -> Result<(), JsValue> {
         3,
         0,
         0,
-        CustomFlickerBlobContext { frame: 0 },
+        CustomFlickerBlobContext::new(0),
         Box::new(custom_flicker_blob_right),
     );
     //    scene.add_custom(0, 0, 10, 0, 0, 0, Box::new(custom_sun_blob));
