@@ -20,6 +20,9 @@ pub fn run() -> Result<(), JsValue> {
     #[cfg(debug_assertions)]
     console_error_panic_hook::set_once();
 
+    const WIDTH: u32 = 80;
+    const HEIGHT: u32 = 192;
+
     struct CustomBlob {};
     impl CustomBlob {
         const BOUNCE_THRUST: f64 = -20.0;
@@ -34,26 +37,102 @@ pub fn run() -> Result<(), JsValue> {
                 input.vy + Self::GRAVITY_DRAG
             };
 
-            Physics::new(input.x, y, input.r, input.vx, vy)
+            Physics::new(input.x, y, input.r, input.vx, vy, 0)
         }
     }
     let custom_bouncy_blob = CustomBlob {};
 
     struct CustomSunBlob {}
-    impl CustomSunBlob {}
     impl Ticker for CustomSunBlob {
         fn tick(&self, input: Physics, _: &(u32, u32)) -> Physics {
-            Physics::new(input.x, input.y, input.r, input.vx, input.vy)
+            Physics::new(input.x, input.y, input.r, input.vx, input.vy, 0)
         }
     }
     let custom_sun_blob = CustomSunBlob {};
 
-    let surface = Surface::new(1024, 768);
+    struct CustomFlickerBlob {
+        position_table: Vec<(f64, f64)>,
+    }
+    impl CustomFlickerBlob {
+        fn get_pos(&self, index: usize) -> &(f64, f64) {
+            self.position_table
+                .get(index)
+                .expect("No position defined?")
+        }
+    }
+    impl Ticker for CustomFlickerBlob {
+        fn tick(&self, input: Physics, _: &(u32, u32)) -> Physics {
+            let pos = self.get_pos(input.context);
+            let mut frame = input.context + 1;
+            if frame == self.position_table.len() {
+                frame = 0;
+            }
+            Physics::new(pos.0 / 2.0, pos.1, input.r, input.vx, input.vy, frame)
+        }
+    }
+    let custom_flicker_blob = CustomFlickerBlob {
+        position_table: vec![
+            (35.0, 143.0),
+            (40.0, 142.0),
+            (45.0, 140.0),
+            (50.0, 137.0),
+            (55.0, 133.0),
+            (60.0, 127.0),
+            (64.0, 120.0),
+            (68.0, 113.0),
+            (72.0, 104.0),
+            (74.0, 95.0),
+            (77.0, 85.0),
+            (78.0, 74.0),
+            (79.0, 64.0),
+            (79.0, 53.0),
+            (79.0, 42.0),
+            (78.0, 31.0),
+            (77.0, 21.0),
+            (74.0, 11.0),
+            (72.0, 2.0),
+            (68.0, -6.0),
+            (64.0, -14.0),
+            (60.0, -20.0),
+            (55.0, -26.0),
+            (50.0, -30.0),
+            (45.0, -34.0),
+            (40.0, -36.0),
+            (35.0, -36.0),
+            (29.0, -36.0),
+            (24.0, -34.0),
+            (19.0, -30.0),
+            (14.0, -26.0),
+            (9.0, -20.0),
+            (5.0, -14.0),
+            (1.0, -6.0),
+            (-2.0, 2.0),
+            (-4.0, 11.0),
+            (-7.0, 21.0),
+            (-8.0, 31.0),
+            (-9.0, 42.0),
+            (-9.0, 53.0),
+            (-9.0, 64.0),
+            (-8.0, 74.0),
+            (-7.0, 85.0),
+            (-4.0, 95.0),
+            (-2.0, 104.0),
+            (1.0, 113.0),
+            (5.0, 120.0),
+            (9.0, 127.0),
+            (14.0, 133.0),
+            (19.0, 137.0),
+            (24.0, 140.0),
+            (29.0, 142.0),
+        ],
+    };
+
+    let surface = Surface::new(WIDTH, HEIGHT);
     let mut scene = Scene::new(&surface);
-    scene.add_bouncer(40, 80, 10, 10, 10);
-    scene.add_bouncer(147, 150, 25, 4, 4);
-    scene.add_custom(1024 / 3 * 2, 0, 30, 0, 1, Box::new(custom_bouncy_blob));
-    scene.add_custom(35, 35, 101, 0, 1, Box::new(custom_sun_blob));
+    //scene.add_bouncer(10, 10, 10, 10, 10);
+
+    scene.add_custom(0, 0, 2, 0, 0, Box::new(custom_flicker_blob));
+    scene.add_custom(0, 0, 10, 0, 0, Box::new(custom_sun_blob));
 
     let document = web_sys::window().unwrap().document().unwrap();
     let canvas = document.get_element_by_id("canvas").unwrap();
@@ -94,7 +173,8 @@ pub fn run() -> Result<(), JsValue> {
             }
         }
         let data =
-            ImageData::new_with_u8_clamped_array_and_sh(Clamped(&mut data_vec), 1024, 768).unwrap();
+            ImageData::new_with_u8_clamped_array_and_sh(Clamped(&mut data_vec), WIDTH, HEIGHT)
+                .unwrap();
         let _ = context.put_image_data(&data, 0.0, 0.0);
         data_index = 0;
 
