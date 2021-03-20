@@ -1,8 +1,9 @@
 use iso_surface::{scene::Scene, surface::Surface, Contextable, Physics, Ticker};
+use itertools::Itertools;
 use std::{cell::RefCell, f64, rc::Rc};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::{prelude::*, Clamped};
-use web_sys::ImageData;
+use web_sys::{Document, ImageData};
 
 fn window() -> web_sys::Window {
     web_sys::window().expect("no global `window` exists")
@@ -12,6 +13,43 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
     window()
         .request_animation_frame(f.as_ref().unchecked_ref())
         .expect("should register `requestAnimationFrame` OK");
+}
+
+#[wasm_bindgen]
+extern "C" {
+    // Use `js_namespace` here to bind `console.log(..)` instead of just
+    // `log(..)`
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+
+    // The `console.log` is quite polymorphic, so we can bind it with multiple
+    // signatures. Note that we need to use `js_name` to ensure we always call
+    // `log` in JS.
+    #[wasm_bindgen(js_namespace = console, js_name = log)]
+    fn log_u32(a: u32);
+
+    // Multiple arguments too!
+    #[wasm_bindgen(js_namespace = console, js_name = log)]
+    fn log_many(a: &str, b: &str);
+}
+
+fn bare_bones() {
+    unsafe {
+        log("Hello from Rust!");
+        log_u32(42);
+        log_many("Logging", "many values!");
+    }
+}
+
+// Next let's define a macro that's like `println!`, only it works for
+// `console.log`. Note that `println!` doesn't actually work on the wasm target
+// because the standard library currently just eats all output. To get
+// `println!`-like behavior in your app you'll likely want a macro like this.
+
+macro_rules! console_log {
+    // Note that this is using the `log` function imported above during
+    // `bare_bones`
+    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
 }
 
 // This function is automatically invoked after the wasm module is instantiated.
@@ -56,7 +94,7 @@ pub fn run() -> Result<(), JsValue> {
     }
 
     impl CustomFlickerBlobContext {
-        const FRAME_SKIP: usize = 3;
+        const FRAME_SKIP: usize = 60;
 
         fn new(initial_frame: usize) -> Self {
             Self {
@@ -102,6 +140,7 @@ pub fn run() -> Result<(), JsValue> {
                     let mut frame = context.frame();
                     let pos = self.get_pos(frame);
                     frame = frame + 1;
+                    console_log!("Frame {}", frame);
                     if frame == self.position_table.len() {
                         frame = 0;
                     }
@@ -328,6 +367,9 @@ pub fn run() -> Result<(), JsValue> {
                 data_index += 1;
             }
         }
+
+        dump_pixel_values_to_console(&data_vec, &document);
+
         let data =
             ImageData::new_with_u8_clamped_array_and_sh(Clamped(&mut data_vec), WIDTH, HEIGHT)
                 .unwrap();
@@ -346,4 +388,16 @@ pub fn run() -> Result<(), JsValue> {
 
     request_animation_frame(g.borrow().as_ref().unwrap());
     Ok(())
+}
+
+fn dump_pixel_values_to_console(data_vec: &Vec<u8>, document: &Document) -> () {
+    let colors: Vec<_> = data_vec.chunks_exact(4).map(|chunk| chunk[1]).collect();
+    let s = colors.iter().join("\n");
+
+    let text_box = document
+        .get_element_by_id("frame_drop")
+        .unwrap()
+        .dyn_into::<web_sys::HtmlElement>()
+        .unwrap();
+    text_box.set_inner_text(s.as_str());
 }

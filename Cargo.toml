@@ -30,6 +30,7 @@ iso-surface = { path = "../iso-surface" }
 # compared to the default allocator's ~10K. However, it is slower than the default
 # allocator, so it's not enabled by default.
 wee_alloc = { version = "0.4.2", optional = true }
+itertools = "0.10.0"
 
 # The `web-sys` crate allows you to interact with the various browser APIs,
 # like the DOM.

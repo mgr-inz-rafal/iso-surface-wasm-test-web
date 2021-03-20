@@ -314,6 +314,7 @@ dependencies = [
  "console_error_panic_hook",
  "futures",
  "iso-surface",
+ "itertools",
  "js-sys",
  "wasm-bindgen",
  "wasm-bindgen-futures",
