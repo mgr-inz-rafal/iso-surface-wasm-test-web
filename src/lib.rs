@@ -1,9 +1,17 @@
 use iso_surface::{scene::Scene, surface::Surface, Contextable, Physics, Ticker};
 use itertools::Itertools;
+use lazy_static::lazy_static;
+use std::collections::HashSet;
+use std::sync::Mutex;
 use std::{cell::RefCell, f64, rc::Rc};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::{prelude::*, Clamped};
 use web_sys::{Document, ImageData};
+
+lazy_static! {
+    static ref GLOBAL_FRAME: Mutex<usize> = Mutex::new(0);
+    static ref GLOBAL_DUMP_STATE: Mutex<HashSet<usize>> = Mutex::new(HashSet::new());
+}
 
 fn window() -> web_sys::Window {
     web_sys::window().expect("no global `window` exists")
@@ -34,11 +42,9 @@ extern "C" {
 }
 
 fn bare_bones() {
-    unsafe {
-        log("Hello from Rust!");
-        log_u32(42);
-        log_many("Logging", "many values!");
-    }
+    log("Hello from Rust!");
+    log_u32(42);
+    log_many("Logging", "many values!");
 }
 
 // Next let's define a macro that's like `println!`, only it works for
@@ -94,7 +100,7 @@ pub fn run() -> Result<(), JsValue> {
     }
 
     impl CustomFlickerBlobContext {
-        const FRAME_SKIP: usize = 60;
+        const FRAME_SKIP: usize = 1;
 
         fn new(initial_frame: usize) -> Self {
             Self {
@@ -111,6 +117,7 @@ pub fn run() -> Result<(), JsValue> {
 
         fn set_frame(&mut self, frame: usize) {
             self.frame = frame;
+            *(GLOBAL_FRAME.lock().unwrap()) = frame;
         }
 
         fn should_advance(&mut self) -> bool {
@@ -232,6 +239,7 @@ pub fn run() -> Result<(), JsValue> {
                     } else {
                         context.set_frame(frame - 1)
                     }
+
                     Physics::with_context(
                         (pos.0 / 2.0) + (90.0 / 2.0),
                         pos.1,
@@ -329,6 +337,8 @@ pub fn run() -> Result<(), JsValue> {
     );
     //    scene.add_custom(0, 0, 10, 0, 0, 0, Box::new(custom_sun_blob));
 
+    scene.tick();
+
     let document = web_sys::window().unwrap().document().unwrap();
     let canvas = document.get_element_by_id("canvas").unwrap();
     let canvas: web_sys::HtmlCanvasElement = canvas
@@ -354,6 +364,8 @@ pub fn run() -> Result<(), JsValue> {
 
     let mut data_index = 0;
     let frame_logic = move || {
+        scene.tick();
+
         for y in 0..surface.height() as i32 {
             for x in 0..surface.width() as i32 {
                 let color = Surface::pixel_color(&scene, x, y);
@@ -380,7 +392,6 @@ pub fn run() -> Result<(), JsValue> {
         // let _ = f.borrow_mut().take();
         // return;
 
-        scene.tick();
         request_animation_frame(f.borrow().as_ref().unwrap());
     };
 
@@ -390,14 +401,29 @@ pub fn run() -> Result<(), JsValue> {
     Ok(())
 }
 
-fn dump_pixel_values_to_console(data_vec: &Vec<u8>, document: &Document) -> () {
+fn dump_pixel_values_to_console(data_vec: &Vec<u8>, document: &Document) {
+    let global_frame = *(GLOBAL_FRAME.lock().unwrap());
+    let global_dump_state = &mut *(GLOBAL_DUMP_STATE.lock().unwrap());
+    if global_dump_state.contains(&global_frame) {
+//        return;
+    }
+    console_log!("Actually dumping frame: {}", global_frame);
+    global_dump_state.insert(global_frame);
+
     let colors: Vec<_> = data_vec.chunks_exact(4).map(|chunk| chunk[1]).collect();
     let s = colors.iter().join("\n");
 
     let text_box = document
-        .get_element_by_id("frame_drop")
+        .get_element_by_id(format!("frame_header_{}", global_frame).as_str())
         .unwrap()
         .dyn_into::<web_sys::HtmlElement>()
         .unwrap();
-    text_box.set_inner_text(s.as_str());
+    text_box.set_inner_text(format!("Frame: {}", global_frame).as_str());
+
+    let text_box = document
+        .get_element_by_id(format!("frame_drop_{}", global_frame).as_str())
+        .unwrap()
+        .dyn_into::<web_sys::HtmlElement>()
+        .unwrap();
+    text_box.set_inner_text(&s.to_string());
 }

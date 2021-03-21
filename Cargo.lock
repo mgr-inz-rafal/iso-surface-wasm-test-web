@@ -316,6 +316,7 @@ dependencies = [
  "iso-surface",
  "itertools",
  "js-sys",
+ "lazy_static",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
